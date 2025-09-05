@@ -191,6 +191,14 @@ class SupplyApp:
         messagebox.showinfo("Added", f"Item '{name}' added (unsaved changes).")
 
     def save(self) -> None:
+        # Ensure latest entry values are stored before saving
+        for day, entry in self.day_entries.items():
+            try:
+                self.data.sales_estimates[day] = float(entry.get().strip())
+            except ValueError:
+                messagebox.showerror("Error", f"Invalid number for {day}")
+                return
+
         self.data.save()
         messagebox.showinfo("Saved", "Supplies configuration saved successfully.")
 
