@@ -51,13 +51,18 @@ class SupplyApp:
         self.calc_button.pack(pady=10)
 
         # Results table
-        self.tree = ttk.Treeview(root, columns=("Coefficient", "Required"), show="headings")
+        self.tree = ttk.Treeview(
+            root, columns=("Item", "Coefficient", "Required"), show="headings"
+        )
+        self.tree.heading("Item", text="Item")
         self.tree.heading("Coefficient", text="Coefficient")
         self.tree.heading("Required", text="Required")
-        self.tree.pack(padx=10, pady=10, fill="both", expand=True)
 
+        self.tree.column("Item", width=150, anchor="w")
         self.tree.column("Coefficient", width=100, anchor="center")
         self.tree.column("Required", width=100, anchor="center")
+
+        self.tree.pack(padx=10, pady=10, fill="both", expand=True)
 
     def calculate(self):
         # Sum sales estimates for selected days
@@ -81,7 +86,7 @@ class SupplyApp:
         # Populate results
         for item, coef in supply_items.items():
             required = total_sales * coef
-            self.tree.insert("", "end", values=(coef, round(required, 2)), text=item)
+            self.tree.insert("", "end", values=(item, coef, round(required, 2)))
 
         # Show total in title
         self.root.title(f"Restaurant Supply Calculator (Total Sales = {total_sales})")
