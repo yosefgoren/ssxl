@@ -13,12 +13,12 @@ sales_estimates = {
     "Sunday": 130,
 }
 
-# Hard-coded supply items and coefficients
+# Hard-coded supply items: name -> (coefficient, unit)
 supply_items = {
-    "Tomatoes (kg)": 0.05,
-    "Cheese (kg)": 0.03,
-    "Bread (loaves)": 0.02,
-    "Chicken (kg)": 0.04,
+    "Tomatoes": (0.05, "kg"),
+    "Cheese": (0.03, "kg"),
+    "Bread": (0.02, "loaves"),
+    "Chicken": (0.04, "kg"),
 }
 
 
@@ -52,15 +52,17 @@ class SupplyApp:
 
         # Results table
         self.tree = ttk.Treeview(
-            root, columns=("Item", "Coefficient", "Required"), show="headings"
+            root, columns=("Item", "Coefficient", "Required", "Unit"), show="headings"
         )
         self.tree.heading("Item", text="Item")
         self.tree.heading("Coefficient", text="Coefficient")
         self.tree.heading("Required", text="Required")
+        self.tree.heading("Unit", text="Unit")
 
         self.tree.column("Item", width=150, anchor="w")
         self.tree.column("Coefficient", width=100, anchor="center")
         self.tree.column("Required", width=100, anchor="center")
+        self.tree.column("Unit", width=100, anchor="center")
 
         self.tree.pack(padx=10, pady=10, fill="both", expand=True)
 
@@ -84,9 +86,9 @@ class SupplyApp:
             self.tree.delete(row)
 
         # Populate results
-        for item, coef in supply_items.items():
+        for item, (coef, unit) in supply_items.items():
             required = total_sales * coef
-            self.tree.insert("", "end", values=(item, coef, round(required, 2)))
+            self.tree.insert("", "end", values=(item, coef, round(required, 2), unit))
 
         # Show total in title
         self.root.title(f"Restaurant Supply Calculator (Total Sales = {total_sales})")
