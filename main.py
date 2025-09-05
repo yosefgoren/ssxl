@@ -150,7 +150,7 @@ class SupplyApp:
 
         self.latest_msg_var: tk.StringVar = tk.StringVar()
         self.latest_msg_label: ttk.Label = ttk.Label(
-            self.messages_frame, textvariable=self.latest_msg_var, foreground="blue"
+            self.messages_frame, textvariable=self.latest_msg_var, foreground="green"
         )
         self.latest_msg_label.pack(side="top", anchor="w", fill="x")
 
