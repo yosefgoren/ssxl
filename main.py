@@ -136,12 +136,65 @@ class SupplyApp:
             side="right", padx=5
         )
 
+        # --- Messages panel
+        self.messages: list[str] = []
+        self.messages_frame: ttk.Frame = ttk.Frame(root)
+        self.messages_frame.pack(fill="x", padx=5, pady=5)
+
+        self.latest_msg_var: tk.StringVar = tk.StringVar()
+        self.latest_msg_label: ttk.Label = ttk.Label(
+            self.messages_frame, textvariable=self.latest_msg_var, foreground="blue"
+        )
+        self.latest_msg_label.pack(side="top", anchor="w", fill="x")
+
+        self.expand_button: ttk.Button = ttk.Button(
+            self.messages_frame, text="▼", width=2, command=self.toggle_messages
+        )
+        self.expand_button.pack(side="left")
+
+        self.all_messages_visible: bool = False
+        self.all_msgs_text: tk.Text = tk.Text(
+            self.messages_frame, height=5, state="disabled"
+        )
+        self.all_msgs_text.pack(side="bottom", fill="x")
+        self.all_msgs_text.pack_forget()
+
         # Bind double-click on table cells for editing
         self.tree.bind("<Double-1>", self.on_tree_double_click)
 
         # Populate initial table (even before any days selected)
         self.calculate()
 
+    # -------------------------------
+    # Messages system
+    # -------------------------------
+    def show_message(self, msg: str) -> None:
+        self.messages.append(msg)
+        self.latest_msg_var.set(msg)
+        if self.all_messages_visible:
+            self.all_msgs_text.configure(state="normal")
+            self.all_msgs_text.delete("1.0", "end")
+            self.all_msgs_text.insert("1.0", "\n".join(self.messages))
+            self.all_msgs_text.configure(state="disabled")
+
+
+    def toggle_messages(self) -> None:
+        self.all_messages_visible = not self.all_messages_visible
+        if self.all_messages_visible:
+            self.all_msgs_text.pack(side="bottom", fill="x")
+            self.expand_button.configure(text="▲")
+            # Update content
+            self.all_msgs_text.configure(state="normal")
+            self.all_msgs_text.delete("1.0", "end")
+            self.all_msgs_text.insert("1.0", "\n".join(self.messages))
+            self.all_msgs_text.configure(state="disabled")
+        else:
+            self.all_msgs_text.pack_forget()
+            self.expand_button.configure(text="▼")
+
+    # -------------------------------
+    # Table editing
+    # -------------------------------
     def on_tree_double_click(self, event: tk.Event) -> None:
         """Allow editing of supply items directly in the table."""
         region = self.tree.identify("region", event.x, event.y)
@@ -182,14 +235,19 @@ class SupplyApp:
                 coef = float(item_values[1])
             except ValueError:
                 coef = 0.0
+                self.show_message(f"Invalid coefficient for {item_name}, reset to 0")
             unit = item_values[3]
 
             self.data.supply_items[item_name] = (coef, unit)
             self.data.dirty = True
+            self.show_message(f"Updated item: {item_name}")
 
         entry.bind("<Return>", save_edit)
         entry.bind("<FocusOut>", save_edit)
 
+    # -------------------------------
+    # Main functions
+    # -------------------------------
     def calculate(self) -> None:
         """Calculate required supplies based on selected days and override input."""
         # Update sales_estimates from entries
@@ -197,7 +255,7 @@ class SupplyApp:
             try:
                 self.data.sales_estimates[day] = float(entry.get().strip())
             except ValueError:
-                messagebox.showerror("Error", f"Invalid number for {day}")
+                self.show_message(f"Invalid number for {day}")
                 return
         self.data.dirty = True
 
@@ -213,7 +271,7 @@ class SupplyApp:
             try:
                 total_sales = float(override)
             except ValueError:
-                messagebox.showerror("Error", "Override must be a number")
+                self.show_message("Override must be a number")
                 return
 
         for row in self.tree.get_children():
@@ -224,6 +282,7 @@ class SupplyApp:
             self.tree.insert("", "end", values=(item, coef, round(required, 2), unit))
 
         self.root.title(f"Restaurant Supply Calculator (Total Sales = {total_sales})")
+        self.show_message("Calculation done")
 
     def add_item(self) -> None:
         """Prompt user to add a new supply item."""
@@ -236,13 +295,13 @@ class SupplyApp:
                 or "0"
             )
         except ValueError:
-            messagebox.showerror("Error", "Coefficient must be a number")
+            self.show_message("Coefficient must be a number")
             return
         unit: str | None = simpledialog.askstring("Add Item", "Unit (e.g., kg, loaves):")
         if not unit:
             return
         self.data.add_item(name, coef, unit)
-        messagebox.showinfo("Added", f"Item '{name}' added (unsaved changes).")
+        self.show_message(f"Item '{name}' added (unsaved changes)")
 
     def save(self) -> None:
         # Ensure latest entry values are stored before saving
@@ -250,11 +309,11 @@ class SupplyApp:
             try:
                 self.data.sales_estimates[day] = float(entry.get().strip())
             except ValueError:
-                messagebox.showerror("Error", f"Invalid number for {day}")
+                self.show_message(f"Invalid number for {day}")
                 return
 
         self.data.save()
-        messagebox.showinfo("Saved", "Supplies configuration saved successfully.")
+        self.show_message("Supplies configuration saved successfully")
 
     def on_exit(self) -> None:
         if self.data.dirty:
