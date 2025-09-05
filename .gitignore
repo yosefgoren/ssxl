@@ -3,3 +3,4 @@ build/
 *.spec
 *.exe
 dist/
+supplies.json
