@@ -1,20 +1,23 @@
 # supply_app.py
+from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk, messagebox
+from typing import Dict, Tuple
+
 
 # Hard-coded sales estimates per weekday
-sales_estimates = {
-    "Monday": 100,
-    "Tuesday": 120,
-    "Wednesday": 90,
-    "Thursday": 110,
-    "Friday": 150,
-    "Saturday": 200,
-    "Sunday": 130,
+sales_estimates: Dict[str, float] = {
+    "Monday": 100.0,
+    "Tuesday": 120.0,
+    "Wednesday": 90.0,
+    "Thursday": 110.0,
+    "Friday": 150.0,
+    "Saturday": 200.0,
+    "Sunday": 130.0,
 }
 
 # Hard-coded supply items: name -> (coefficient, unit)
-supply_items = {
+supply_items: Dict[str, Tuple[float, str]] = {
     "Tomatoes": (0.05, "kg"),
     "Cheese": (0.03, "kg"),
     "Bread": (0.02, "loaves"),
@@ -23,35 +26,39 @@ supply_items = {
 
 
 class SupplyApp:
-    def __init__(self, root):
-        self.root = root
+    def __init__(self, root: tk.Tk) -> None:
+        self.root: tk.Tk = root
         self.root.title("Restaurant Supply Calculator")
 
         # Frame for weekday checkboxes
-        self.days_frame = ttk.LabelFrame(root, text="Select Days")
+        self.days_frame: ttk.LabelFrame = ttk.LabelFrame(root, text="Select Days")
         self.days_frame.pack(padx=10, pady=10, fill="x")
 
-        self.day_vars = {}
+        self.day_vars: Dict[str, tk.BooleanVar] = {}
         for day in sales_estimates:
-            var = tk.BooleanVar()
-            cb = ttk.Checkbutton(self.days_frame, text=day, variable=var)
+            var: tk.BooleanVar = tk.BooleanVar()
+            cb: ttk.Checkbutton = ttk.Checkbutton(self.days_frame, text=day, variable=var)
             cb.pack(anchor="w")
             self.day_vars[day] = var
 
         # Optional override for total sales estimate
-        self.override_frame = ttk.LabelFrame(root, text="Override Sales Estimate")
+        self.override_frame: ttk.LabelFrame = ttk.LabelFrame(root, text="Override Sales Estimate")
         self.override_frame.pack(padx=10, pady=10, fill="x")
 
-        ttk.Label(self.override_frame, text="Total Sales ($):").pack(side="left", padx=5)
-        self.override_entry = ttk.Entry(self.override_frame, width=10)
+        lbl: ttk.Label = ttk.Label(self.override_frame, text="Total Sales ($):")
+        lbl.pack(side="left", padx=5)
+
+        self.override_entry: ttk.Entry = ttk.Entry(self.override_frame, width=10)
         self.override_entry.pack(side="left")
 
         # Calculate button
-        self.calc_button = ttk.Button(root, text="Calculate Supplies", command=self.calculate)
+        self.calc_button: ttk.Button = ttk.Button(
+            root, text="Calculate Supplies", command=self.calculate
+        )
         self.calc_button.pack(pady=10)
 
         # Results table
-        self.tree = ttk.Treeview(
+        self.tree: ttk.Treeview = ttk.Treeview(
             root, columns=("Item", "Coefficient", "Required", "Unit"), show="headings"
         )
         self.tree.heading("Item", text="Item")
@@ -66,14 +73,15 @@ class SupplyApp:
 
         self.tree.pack(padx=10, pady=10, fill="both", expand=True)
 
-    def calculate(self):
+    def calculate(self) -> None:
+        """Calculate required supplies based on selected days and override input."""
         # Sum sales estimates for selected days
-        total_sales = sum(
+        total_sales: float = sum(
             sales_estimates[day] for day, var in self.day_vars.items() if var.get()
         )
 
         # Override if provided
-        override = self.override_entry.get().strip()
+        override: str = self.override_entry.get().strip()
         if override:
             try:
                 total_sales = float(override)
@@ -87,7 +95,7 @@ class SupplyApp:
 
         # Populate results
         for item, (coef, unit) in supply_items.items():
-            required = total_sales * coef
+            required: float = total_sales * coef
             self.tree.insert("", "end", values=(item, coef, round(required, 2), unit))
 
         # Show total in title
@@ -95,6 +103,6 @@ class SupplyApp:
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = SupplyApp(root)
+    root: tk.Tk = tk.Tk()
+    app: SupplyApp = SupplyApp(root)
     root.mainloop()
