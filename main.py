@@ -5,6 +5,13 @@ import os
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from typing import Dict, Tuple, Any
+import sys
+
+def resource_path(relative_path: str) -> str:
+    """Get absolute path to resource, works for dev and PyInstaller."""
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
 
 
 SUPPLIES_FILE: str = "./supplies.json"
@@ -321,8 +328,18 @@ class SupplyApp:
         self.root.destroy()
 
 
+def load_custom_theme(root: tk.Tk) -> None:
+    # Path to .tcl file
+    
+    themes_index_path = resource_path(os.path.join("theme", "pkgIndex.tcl"))
+    root.tk.call("source", themes_index_path)
+    style = ttk.Style()
+    style.theme_use("breeze-dark")
+
+
 if __name__ == "__main__":
     root: tk.Tk = tk.Tk()
+    load_custom_theme(root)
     data: SupplyData = SupplyData()
     app: SupplyApp = SupplyApp(root, data)
     root.mainloop()
