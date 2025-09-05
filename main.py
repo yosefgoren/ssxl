@@ -257,7 +257,6 @@ class SupplyApp:
             except ValueError:
                 self.show_message(f"Invalid number for {day}")
                 return
-        self.data.dirty = True
 
         # Sum sales estimates for selected days
         total_sales: float = sum(
