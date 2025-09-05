@@ -34,13 +34,13 @@ class SupplyData:
         if not os.path.exists(self.path):
             # create empty file with defaults
             self.sales_estimates = {
-                "Monday": 100.0,
-                "Tuesday": 120.0,
-                "Wednesday": 90.0,
-                "Thursday": 110.0,
-                "Friday": 150.0,
-                "Saturday": 200.0,
-                "Sunday": 130.0,
+                "Monday": 0.0,
+                "Tuesday": 0.0,
+                "Wednesday": 0.0,
+                "Thursday": 0.0,
+                "Friday": 0.0,
+                "Saturday": 0.0,
+                "Sunday": 0.0,
             }
             self.supply_items = {}
             self.dark_mode = True
@@ -119,7 +119,7 @@ class SupplyApp:
         )
         self.override_frame.pack(padx=10, pady=10, fill="x")
 
-        ttk.Label(self.override_frame, text="Total Sales ($):").pack(side="left", padx=5)
+        ttk.Label(self.override_frame, text="Total Sales:").pack(side="left", padx=5)
         self.override_entry: ttk.Entry = ttk.Entry(self.override_frame, width=10)
         self.override_entry.pack(side="left")
 
