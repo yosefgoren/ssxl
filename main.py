@@ -136,6 +136,60 @@ class SupplyApp:
             side="right", padx=5
         )
 
+        # Bind double-click on table cells for editing
+        self.tree.bind("<Double-1>", self.on_tree_double_click)
+
+        # Populate initial table (even before any days selected)
+        self.calculate()
+
+    def on_tree_double_click(self, event: tk.Event) -> None:
+        """Allow editing of supply items directly in the table."""
+        region = self.tree.identify("region", event.x, event.y)
+        if region != "cell":
+            return
+
+        row_id = self.tree.identify_row(event.y)
+        col_id = self.tree.identify_column(event.x)
+        if not row_id or not col_id:
+            return
+
+        # Get current value
+        item_values = list(self.tree.item(row_id, "values"))
+        col_index = int(col_id.replace("#", "")) - 1
+        old_value = item_values[col_index]
+
+        # Cell bbox
+        x, y, w, h = self.tree.bbox(row_id, col_id)
+
+        # Entry widget overlay
+        entry = ttk.Entry(self.tree)
+        entry.place(x=x, y=y, width=w, height=h)
+        entry.insert(0, old_value)
+        entry.focus()
+
+        def save_edit(event: tk.Event | None = None) -> None:
+            new_value = entry.get().strip()
+            entry.destroy()
+            if not new_value:
+                return
+
+            item_values[col_index] = new_value
+            self.tree.item(row_id, values=item_values)
+
+            # Update back into supply_items
+            item_name = item_values[0]  # first column is Item name
+            try:
+                coef = float(item_values[1])
+            except ValueError:
+                coef = 0.0
+            unit = item_values[3]
+
+            self.data.supply_items[item_name] = (coef, unit)
+            self.data.dirty = True
+
+        entry.bind("<Return>", save_edit)
+        entry.bind("<FocusOut>", save_edit)
+
     def calculate(self) -> None:
         """Calculate required supplies based on selected days and override input."""
         # Update sales_estimates from entries
