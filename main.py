@@ -25,6 +25,7 @@ class SupplyData:
         self.path: str = path
         self.sales_estimates: Dict[str, float] = {}
         self.supply_items: Dict[str, Tuple[float, str]] = {}
+        self.dark_mode: bool = True  # default dark
         self.dirty: bool = False
 
         self.load()
@@ -42,6 +43,7 @@ class SupplyData:
                 "Sunday": 130.0,
             }
             self.supply_items = {}
+            self.dark_mode = True
             self.save()
         else:
             with open(self.path, "r", encoding="utf-8") as f:
@@ -52,11 +54,13 @@ class SupplyData:
             self.supply_items = {
                 k: tuple(v) for k, v in data.get("supply_items", {}).items()
             }
+            self.dark_mode = bool(data.get("dark_mode", True))
 
     def save(self) -> None:
         data: Dict[str, Any] = {
             "sales_estimates": self.sales_estimates,
             "supply_items": self.supply_items,
+            "dark_mode": self.dark_mode,
         }
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
@@ -78,6 +82,14 @@ class SupplyApp:
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_exit)
         self.root.bind("<Control-s>", lambda event: self.save())
+
+        btn_frame: ttk.Frame = ttk.Frame(root)
+        btn_frame.pack(pady=5, fill="x")
+
+        # Dark mode toggle button
+        self.dark_mode_btn: ttk.Button = ttk.Button(btn_frame, text="Dark Mode", command=self.toggle_dark_mode)
+        self.dark_mode_btn.pack(pady=4)
+        self.update_dark_mode_button()
 
         # --- Frames
         self.days_frame: ttk.LabelFrame = ttk.LabelFrame(root, text="Select Days")
@@ -114,7 +126,7 @@ class SupplyApp:
         self.calc_button: ttk.Button = ttk.Button(
             root, text="Calculate Supplies", command=self.calculate
         )
-        self.calc_button.pack(pady=10)
+        self.calc_button.pack(pady=4)
 
         # Treeview
         self.tree: ttk.Treeview = ttk.Treeview(
@@ -171,6 +183,24 @@ class SupplyApp:
 
         # Populate initial table (even before any days selected)
         self.calculate()
+        self.apply_theme()  # apply saved dark/light mode
+
+    # -------------------------------
+    # Dark mode functions
+    # -------------------------------
+    def toggle_dark_mode(self) -> None:
+        self.data.dark_mode = not self.data.dark_mode
+        self.data.dirty = True
+        self.update_dark_mode_button()
+        self.show_message(f"Dark Mode {'enabled' if self.data.dark_mode else 'disabled'} for next startup.")
+
+    def update_dark_mode_button(self) -> None:
+        self.dark_mode_btn.configure(text=f"Dark Mode: {'ON' if self.data.dark_mode else 'OFF'}")
+
+    def apply_theme(self) -> None:
+        style = ttk.Style()
+        theme_name = "breeze-dark" if self.data.dark_mode else "breeze"
+        style.theme_use(theme_name)
 
     # -------------------------------
     # Messages system
@@ -333,8 +363,6 @@ def load_custom_theme(root: tk.Tk) -> None:
     
     themes_index_path = resource_path(os.path.join("theme", "pkgIndex.tcl"))
     root.tk.call("source", themes_index_path)
-    style = ttk.Style()
-    style.theme_use("breeze-dark")
 
 
 if __name__ == "__main__":
