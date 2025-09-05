@@ -18,13 +18,13 @@ class SupplyData:
         self.path: str = path
         self.sales_estimates: Dict[str, float] = {}
         self.supply_items: Dict[str, Tuple[float, str]] = {}
-        self.dirty: bool = False  # track unsaved changes
+        self.dirty: bool = False
 
         self.load()
 
     def load(self) -> None:
         if not os.path.exists(self.path):
-            # create empty file
+            # create empty file with defaults
             self.sales_estimates = {
                 "Monday": 100.0,
                 "Tuesday": 120.0,
@@ -39,7 +39,9 @@ class SupplyData:
         else:
             with open(self.path, "r", encoding="utf-8") as f:
                 data: Dict[str, Any] = json.load(f)
-            self.sales_estimates = data.get("sales_estimates", {})
+            self.sales_estimates = {
+                k: float(v) for k, v in data.get("sales_estimates", {}).items()
+            }
             self.supply_items = {
                 k: tuple(v) for k, v in data.get("supply_items", {}).items()
             }
@@ -75,12 +77,24 @@ class SupplyApp:
         self.days_frame.pack(padx=10, pady=10, fill="x")
 
         self.day_vars: Dict[str, tk.BooleanVar] = {}
-        for day in self.data.sales_estimates:
-            var: tk.BooleanVar = tk.BooleanVar()
-            cb: ttk.Checkbutton = ttk.Checkbutton(self.days_frame, text=day, variable=var)
-            cb.pack(anchor="w")
-            self.day_vars[day] = var
+        self.day_entries: Dict[str, ttk.Entry] = {}
 
+        for day in self.data.sales_estimates:
+            row: ttk.Frame = ttk.Frame(self.days_frame)
+            row.pack(fill="x", pady=2)
+
+            var: tk.BooleanVar = tk.BooleanVar()
+            cb: ttk.Checkbutton = ttk.Checkbutton(row, text=day, variable=var)
+            cb.pack(side="left")
+
+            entry: ttk.Entry = ttk.Entry(row, width=8)
+            entry.insert(0, str(self.data.sales_estimates[day]))
+            entry.pack(side="left", padx=5)
+
+            self.day_vars[day] = var
+            self.day_entries[day] = entry
+
+        # Optional override for total sales estimate
         self.override_frame: ttk.LabelFrame = ttk.LabelFrame(
             root, text="Override Sales Estimate"
         )
@@ -124,6 +138,16 @@ class SupplyApp:
 
     def calculate(self) -> None:
         """Calculate required supplies based on selected days and override input."""
+        # Update sales_estimates from entries
+        for day, entry in self.day_entries.items():
+            try:
+                self.data.sales_estimates[day] = float(entry.get().strip())
+            except ValueError:
+                messagebox.showerror("Error", f"Invalid number for {day}")
+                return
+        self.data.dirty = True
+
+        # Sum sales estimates for selected days
         total_sales: float = sum(
             self.data.sales_estimates[day]
             for day, var in self.day_vars.items()
