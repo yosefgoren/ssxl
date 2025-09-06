@@ -238,6 +238,8 @@ class SupplyApp:
         theme_name = "breeze-dark" if self.data.dark_mode else "breeze"
         style.theme_use(theme_name)
 
+        style.configure("Treeview", rowheight=28)  # was ~18 by default
+
     # -------------------------------
     # Messages system
     # -------------------------------
