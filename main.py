@@ -51,15 +51,37 @@ class SupplyData:
             self.sales_estimates = {
                 k: float(v) for k, v in data.get("sales_estimates", {}).items()
             }
-            self.supply_items = {
-                k: tuple(v) for k, v in data.get("supply_items", {}).items()
-            }
+            # Expect supply_items entries as [coef, unit, inventory]
+            raw_items = data.get("supply_items", {})
+            self.supply_items = {}
+            for k, v in raw_items.items():
+                # support legacy formats of length 2 (coef, unit)
+                if isinstance(v, (list, tuple)) and len(v) == 3:
+                    coef = float(v[0])
+                    unit = str(v[1])
+                    inventory = float(v[2])
+                elif isinstance(v, (list, tuple)) and len(v) == 2:
+                    coef = float(v[0])
+                    unit = str(v[1])
+                    inventory = 0.0
+                else:
+                    # fallback: treat value as coef only
+                    coef = float(v)
+                    unit = ""
+                    inventory = 0.0
+                self.supply_items[k] = (coef, unit, inventory)
+
             self.dark_mode = bool(data.get("dark_mode", True))
 
     def save(self) -> None:
+        # Now save supply_items as lists [coef, unit, inventory]
+        serializable_items: Dict[str, Any] = {
+            name: [coef, unit, inventory]
+            for name, (coef, unit, inventory) in self.supply_items.items()
+        }
         data: Dict[str, Any] = {
             "sales_estimates": self.sales_estimates,
-            "supply_items": self.supply_items,
+            "supply_items": serializable_items,
             "dark_mode": self.dark_mode,
         }
         with open(self.path, "w", encoding="utf-8") as f:
@@ -67,7 +89,8 @@ class SupplyData:
         self.dirty = False
 
     def add_item(self, name: str, coef: float, unit: str) -> None:
-        self.supply_items[name] = (coef, unit)
+        # default inventory = 0.0 (do not prompt user)
+        self.supply_items[name] = (coef, unit, 0.0)
         self.dirty = True
 
 
@@ -123,37 +146,45 @@ class SupplyApp:
         self.override_entry: ttk.Entry = ttk.Entry(self.override_frame, width=10)
         self.override_entry.pack(side="left")
 
-        self.calc_button: ttk.Button = ttk.Button(
-            root, text="Calculate Supplies", command=self.calculate
-        )
-        self.calc_button.pack(pady=4)
-
-        # Treeview
+        # Treeview: include Inventory column (before Required)
         self.tree: ttk.Treeview = ttk.Treeview(
-            root, columns=("Item", "Unit", "UPT Coefficient", "Required"), show="headings"
+            root,
+            columns=("Item", "Unit", "UPT Coefficient", "Inventory", "Required"),
+            show="headings",
         )
         self.tree.heading("Item", text="Item")
         self.tree.heading("Unit", text="Unit")
         self.tree.heading("UPT Coefficient", text="UPT Coefficient")
+        self.tree.heading("Inventory", text="Inventory")
         self.tree.heading("Required", text="Required")
 
         self.tree.column("Item", width=150, anchor="w")
         self.tree.column("Unit", width=100, anchor="center")
         self.tree.column("UPT Coefficient", width=100, anchor="center")
+        self.tree.column("Inventory", width=100, anchor="center")
         self.tree.column("Required", width=100, anchor="center")
 
         self.tree.pack(padx=10, pady=10, fill="both", expand=True)
 
-        # Buttons
-        btn_frame: ttk.Frame = ttk.Frame(root)
-        btn_frame.pack(pady=5, fill="x")
+        # (remove the manual Calculate button)
+        # self.calc_button: ttk.Button = ttk.Button(...)
 
-        ttk.Button(btn_frame, text="Add Item", command=self.add_item).pack(
-            side="left", padx=5
-        )
-        ttk.Button(btn_frame, text="Save Supplies Configuration", command=self.save).pack(
-            side="right", padx=5
-        )
+        # Bind double-click on table cells for editing
+        self.tree.bind("<Double-1>", self.on_tree_double_click)
+
+        # Make UI reactive:
+        # - Recalculate when any day checkbox toggles
+        for day, var in self.day_vars.items():
+            var.trace_add("write", lambda *args: self.schedule_recalculate())
+
+        # - Recalculate when day entries change (use key release and focus out)
+        for entry in self.day_entries.values():
+            entry.bind("<KeyRelease>", lambda e: self.schedule_recalculate())
+            entry.bind("<FocusOut>", lambda e: self.schedule_recalculate())
+
+        # - Recalculate when override entry changes
+        self.override_entry.bind("<KeyRelease>", lambda e: self.schedule_recalculate())
+        self.override_entry.bind("<FocusOut>", lambda e: self.schedule_recalculate())
 
         # --- Messages panel
         self.messages: list[str] = []
@@ -177,9 +208,6 @@ class SupplyApp:
         )
         self.all_msgs_text.pack(side="bottom", fill="x")
         self.all_msgs_text.pack_forget()
-
-        # Bind double-click on table cells for editing
-        self.tree.bind("<Double-1>", self.on_tree_double_click)
 
         # Populate initial table (even before any days selected)
         self.calculate()
@@ -260,7 +288,7 @@ class SupplyApp:
         def save_edit(event: tk.Event | None = None) -> None:
             new_value = entry.get().strip()
             entry.destroy()
-            if not new_value:
+            if new_value == "":
                 return
 
             item_values[col_index] = new_value
@@ -268,16 +296,30 @@ class SupplyApp:
 
             # Update back into supply_items
             item_name = item_values[0]  # first column is Item name
-            try:
-                coef = float(item_values[1])
-            except ValueError:
-                coef = 0.0
-                self.show_message(f"Invalid coefficient for {item_name}, reset to 0")
-            unit = item_values[3]
 
-            self.data.supply_items[item_name] = (coef, unit)
+            # Determine values robustly from the row
+            # row layout: [Item, Unit, UPT Coefficient, Inventory, Required]
+            unit_val = str(item_values[1])
+            # coefficient is index 2
+            try:
+                coef_val = float(item_values[2])
+            except (ValueError, TypeError):
+                coef_val = 0.0
+                self.show_message(f"Invalid coefficient for {item_name}, reset to 0")
+            # inventory is index 3
+            try:
+                inventory_val = float(item_values[3])
+            except (ValueError, TypeError):
+                inventory_val = 0.0
+                self.show_message(f"Invalid inventory for {item_name}, reset to 0")
+
+            # Save triple (coef, unit, inventory)
+            self.data.supply_items[item_name] = (coef_val, unit_val, inventory_val)
             self.data.dirty = True
             self.show_message(f"Updated item: {item_name}")
+
+            # Recalculate because the item was edited
+            self.schedule_recalculate()
 
         entry.bind("<Return>", save_edit)
         entry.bind("<FocusOut>", save_edit)
@@ -313,12 +355,31 @@ class SupplyApp:
         for row in self.tree.get_children():
             self.tree.delete(row)
 
-        for item, (coef, unit) in self.data.supply_items.items():
-            required: float = total_sales/1000 * coef
-            self.tree.insert("", "end", values=(item, unit, coef, round(required, 3)))
+        for item, (coef, unit, inventory) in self.data.supply_items.items():
+            # Note: your previous code used total_sales/1000 * coef — keep that logic if intended
+            computed: float = total_sales / 1000 * coef
+            required: float = computed - inventory
+            if required < 0:
+                required = 0.0
+            # show inventory in the table as well
+            self.tree.insert(
+                "",
+                "end",
+                values=(item, unit, coef, round(inventory, 3), round(required, 3)),
+            )
 
         self.root.title(f"Restaurant Supply Calculator (Total Sales = {total_sales})")
         self.show_message("Calculation done")
+
+    def schedule_recalculate(self, delay_ms: int = 150) -> None:
+        """Schedule a single recalculation shortly after the last event."""
+        # cancel previous if exists
+        if hasattr(self, "_recalc_after_id") and self._recalc_after_id is not None:
+            try:
+                self.root.after_cancel(self._recalc_after_id)
+            except Exception:
+                pass
+        self._recalc_after_id = self.root.after(delay_ms, self.calculate)
 
     def add_item(self) -> None:
         """Prompt user to add a new supply item."""
