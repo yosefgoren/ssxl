@@ -72,9 +72,9 @@ class SupplyData:
             json.dump(config, f, indent=2)
         self.dirty = False
 
-    def add_item(self, name: str, coef: float, unit: str) -> None:
+    def add_item(self, name: str) -> None:
         # coef, unit, inventory (default 0), supplier (default "")
-        self.supply_items[name] = (coef, unit, 0.0, "")
+        self.supply_items[name] = (0.0, "", 0.0, "")
         self.dirty = True
 
 
@@ -95,7 +95,7 @@ class SupplyApp:
 
         # Dark mode toggle button
         self.dark_mode_btn: ttk.Button = ttk.Button(btn_frame, text="Dark Mode", command=self.toggle_dark_mode)
-        self.dark_mode_btn.pack(pady=4)
+        self.dark_mode_btn.pack(side='right', padx=10, pady=5)
         self.update_dark_mode_button()
 
         # --- Frames
@@ -373,20 +373,7 @@ class SupplyApp:
     def add_item(self) -> None:
         """Prompt user to add a new supply item."""
         name: str | None = simpledialog.askstring("Add Item", "Item Name:")
-        unit: str | None = simpledialog.askstring("Add Item", "Unit (e.g., kg, loaves):")
-        if not unit:
-            return
-        if not name:
-            return
-        try:
-            coef: float = float(
-                simpledialog.askstring("Add Item", "UPT Coefficient:", parent=self.root)
-                or "0"
-            )
-        except ValueError:
-            self.show_message("Coefficient must be a number")
-            return
-        self.data.add_item(name, coef, unit)
+        self.data.add_item(name)
         self.schedule_recalculate()
         self.show_message(f"Item '{name}' added (unsaved changes)")
 
