@@ -166,8 +166,16 @@ class SupplyApp:
 
         self.tree.pack(padx=10, pady=10, fill="both", expand=True)
 
-        # (remove the manual Calculate button)
-        # self.calc_button: ttk.Button = ttk.Button(...)
+        # Buttons
+        btn_frame: ttk.Frame = ttk.Frame(root)
+        btn_frame.pack(pady=5, fill="x")
+
+        ttk.Button(btn_frame, text="Add Item", command=self.add_item).pack(
+            side="left", padx=5
+        )
+        ttk.Button(btn_frame, text="Save Supplies Configuration", command=self.save).pack(
+            side="right", padx=5
+        )
 
         # Bind double-click on table cells for editing
         self.tree.bind("<Double-1>", self.on_tree_double_click)
@@ -398,6 +406,7 @@ class SupplyApp:
             self.show_message("Coefficient must be a number")
             return
         self.data.add_item(name, coef, unit)
+        self.schedule_recalculate()
         self.show_message(f"Item '{name}' added (unsaved changes)")
 
     def save(self) -> None:
