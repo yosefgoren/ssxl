@@ -130,17 +130,17 @@ class SupplyApp:
 
         # Treeview
         self.tree: ttk.Treeview = ttk.Treeview(
-            root, columns=("Item", "Coefficient", "Required", "Unit"), show="headings"
+            root, columns=("Item", "Unit", "UPT Coefficient", "Required"), show="headings"
         )
         self.tree.heading("Item", text="Item")
-        self.tree.heading("Coefficient", text="Coefficient")
-        self.tree.heading("Required", text="Required")
         self.tree.heading("Unit", text="Unit")
+        self.tree.heading("UPT Coefficient", text="UPT Coefficient")
+        self.tree.heading("Required", text="Required")
 
         self.tree.column("Item", width=150, anchor="w")
-        self.tree.column("Coefficient", width=100, anchor="center")
-        self.tree.column("Required", width=100, anchor="center")
         self.tree.column("Unit", width=100, anchor="center")
+        self.tree.column("UPT Coefficient", width=100, anchor="center")
+        self.tree.column("Required", width=100, anchor="center")
 
         self.tree.pack(padx=10, pady=10, fill="both", expand=True)
 
@@ -314,27 +314,27 @@ class SupplyApp:
             self.tree.delete(row)
 
         for item, (coef, unit) in self.data.supply_items.items():
-            required: float = total_sales * coef
-            self.tree.insert("", "end", values=(item, coef, round(required, 2), unit))
+            required: float = total_sales/1000 * coef
+            self.tree.insert("", "end", values=(item, unit, coef, round(required, 3)))
 
         self.root.title(f"Restaurant Supply Calculator (Total Sales = {total_sales})")
         self.show_message("Calculation done")
 
     def add_item(self) -> None:
         """Prompt user to add a new supply item."""
-        name: str | None = simpledialog.askstring("Add Item", "Item name:")
+        name: str | None = simpledialog.askstring("Add Item", "Item Name:")
+        unit: str | None = simpledialog.askstring("Add Item", "Unit (e.g., kg, loaves):")
+        if not unit:
+            return
         if not name:
             return
         try:
             coef: float = float(
-                simpledialog.askstring("Add Item", "Sales coefficient:", parent=self.root)
+                simpledialog.askstring("Add Item", "UPT Coefficient:", parent=self.root)
                 or "0"
             )
         except ValueError:
             self.show_message("Coefficient must be a number")
-            return
-        unit: str | None = simpledialog.askstring("Add Item", "Unit (e.g., kg, loaves):")
-        if not unit:
             return
         self.data.add_item(name, coef, unit)
         self.show_message(f"Item '{name}' added (unsaved changes)")
