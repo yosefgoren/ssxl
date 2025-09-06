@@ -4,8 +4,9 @@ import json
 import os
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
-from typing import Dict, Tuple, Any
+from typing import Dict
 import sys
+import jsonschema  # requires `pip install jsonschema`
 
 def resource_path(relative_path: str) -> str:
     """Get absolute path to resource, works for dev and PyInstaller."""
@@ -13,60 +14,62 @@ def resource_path(relative_path: str) -> str:
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath("."), relative_path)
 
-
 SUPPLIES_FILE: str = "./supplies.json"
+SCHEMA_FILE: str = resource_path(os.path.join("schema", "config_schema.json"))
+DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+def find_day_idx(day: str) -> int:
+    return DAYS.index(day)
 
 
 # -------------------------------
 # Data Manager
 # -------------------------------
 class SupplyData:
+    # Type alias for clarity
+    SalesEstimates = list[float]  # Monday..Sunday
+    SupplyItems = dict[str, tuple[float, str, float, str]]  # coef, unit, inventory, supplier
+    DarkMode = bool
+    ConfigTuple = tuple[SalesEstimates, SupplyItems, DarkMode]
+
     def __init__(self, path: str = SUPPLIES_FILE) -> None:
         self.path: str = path
-        self.sales_estimates: Dict[str, float] = {}
-        self.supply_items: Dict[str, Tuple[float, str, float, str]] = {}
-        self.dark_mode: bool = True  # default dark
+        self.sales_estimates: SupplyData.SalesEstimates = [0.0] * 7
+        self.supply_items: SupplyData.SupplyItems = {}
+        self.dark_mode: SupplyData.DarkMode = True
         self.dirty: bool = False
 
         self.load()
 
     def load(self) -> None:
+        """Load configuration from JSON, validate against schema."""
         if not os.path.exists(self.path):
-            # create empty file with defaults
-            self.sales_estimates = {
-                "Monday": 0.0,
-                "Tuesday": 0.0,
-                "Wednesday": 0.0,
-                "Thursday": 0.0,
-                "Friday": 0.0,
-                "Saturday": 0.0,
-                "Sunday": 0.0,
-            }
-            self.supply_items = {}
-            self.dark_mode = True
+            # create default file
             self.save()
-        else:
-            with open(self.path, "r", encoding="utf-8") as f:
-                data: Dict[str, Any] = json.load(f)
-            self.sales_estimates = {
-                k: float(v) for k, v in data.get("sales_estimates", {}).items()
-            }
-            
-            self.supply_items = {
-                k: (float(v[0]), str(v[1]), float(v[2]), str(v[3]) if len(v) > 3 else "")
-                for k, v in data.get("supply_items", {}).items()
-            }
+            return
 
-            self.dark_mode = bool(data.get("dark_mode", True))
+        with open(self.path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        # Load schema
+        with open(SCHEMA_FILE, "r", encoding="utf-8") as f:
+            schema = json.load(f)
+
+        # Validate structure
+        jsonschema.validate(instance=data, schema=schema)
+
+        # Destructure into fields
+        self.sales_estimates, self.supply_items, self.dark_mode = data  # type: ignore
 
     def save(self) -> None:
-        data: Dict[str, Any] = {
-            "sales_estimates": self.sales_estimates,
-            "supply_items": self.supply_items,
-            "dark_mode": self.dark_mode,
-        }
+        """Save configuration as JSON tuple."""
+        config: SupplyData.ConfigTuple = (
+            self.sales_estimates,
+            self.supply_items,
+            self.dark_mode,
+        )
         with open(self.path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+            json.dump(config, f, indent=2)
         self.dirty = False
 
     def add_item(self, name: str, coef: float, unit: str) -> None:
@@ -102,7 +105,7 @@ class SupplyApp:
         self.day_vars: Dict[str, tk.BooleanVar] = {}
         self.day_entries: Dict[str, ttk.Entry] = {}
 
-        for day in self.data.sales_estimates:
+        for idx, day in enumerate(DAYS):
             row: ttk.Frame = ttk.Frame(self.days_frame)
             row.pack(fill="x", pady=2)
 
@@ -111,7 +114,7 @@ class SupplyApp:
             cb.pack(side="left")
 
             entry: ttk.Entry = ttk.Entry(row, width=8)
-            entry.insert(0, str(self.data.sales_estimates[day]))
+            entry.insert(0, str(self.data.sales_estimates[idx]))
             entry.pack(side="left", padx=5)
 
             self.day_vars[day] = var
@@ -322,14 +325,14 @@ class SupplyApp:
         # Update sales_estimates from entries
         for day, entry in self.day_entries.items():
             try:
-                self.data.sales_estimates[day] = float(entry.get().strip())
+                self.data.sales_estimates[find_day_idx(day)] = float(entry.get().strip())
             except ValueError:
                 self.show_message(f"Invalid number for {day}")
                 return
 
         # Sum sales estimates for selected days
         total_sales: float = sum(
-            self.data.sales_estimates[day]
+            self.data.sales_estimates[find_day_idx(day)]
             for day, var in self.day_vars.items()
             if var.get()
         )
@@ -391,7 +394,7 @@ class SupplyApp:
         # Ensure latest entry values are stored before saving
         for day, entry in self.day_entries.items():
             try:
-                self.data.sales_estimates[day] = float(entry.get().strip())
+                self.data.sales_estimates[find_day_idx(day)] = float(entry.get().strip())
             except ValueError:
                 self.show_message(f"Invalid number for {day}")
                 return
@@ -408,7 +411,7 @@ class SupplyApp:
 
 def load_custom_theme(root: tk.Tk) -> None:
     # Path to .tcl file
-    
+
     themes_index_path = resource_path(os.path.join("theme", "pkgIndex.tcl"))
     root.tk.call("source", themes_index_path)
 
@@ -416,6 +419,13 @@ def load_custom_theme(root: tk.Tk) -> None:
 if __name__ == "__main__":
     root: tk.Tk = tk.Tk()
     load_custom_theme(root)
-    data: SupplyData = SupplyData()
-    app: SupplyApp = SupplyApp(root, data)
-    root.mainloop()
+    got_bad_config_foramt = False
+    try:
+        data: SupplyData = SupplyData()
+        app: SupplyApp = SupplyApp(root, data)
+        root.mainloop()
+    except jsonschema.ValidationError:
+        got_bad_config_foramt = True
+    
+    if got_bad_config_foramt:
+        raise RuntimeError(f"Configuration file {SUPPLIES_FILE} has an invalid format. Delete it or move it eleswhere so a new one can be created.")
