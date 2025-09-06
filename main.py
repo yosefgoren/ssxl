@@ -130,6 +130,27 @@ class SupplyApp:
         self.override_entry: ttk.Entry = ttk.Entry(self.override_frame, width=10)
         self.override_entry.pack(side="left")
 
+        # --- Supplier filter frame
+        filter_frame: ttk.LabelFrame = ttk.LabelFrame(root, text="Filter Supplier")
+        filter_frame.pack(padx=10, pady=5, fill="x")
+
+        self.supplier_filter: str | None = None
+        self.filter_var: tk.StringVar = tk.StringVar(value="no-filter")
+
+        self.filter_combo: ttk.Combobox = ttk.Combobox(
+            filter_frame,
+            textvariable=self.filter_var,
+            state="readonly",
+            values=["no-filter"]
+        )
+        self.filter_combo.pack(side="left", padx=5, pady=2)
+        self.filter_combo.bind("<<ComboboxSelected>>", self.on_filter_changed)
+
+        self.clear_filter_btn: ttk.Button = ttk.Button(
+            filter_frame, text="clear", command=self.clear_filter
+        )
+        self.clear_filter_btn.pack(side="left", padx=5)
+
         # Treeview: include Inventory column (before Required)
         self.tree: ttk.Treeview = ttk.Treeview(
             root,
@@ -206,6 +227,22 @@ class SupplyApp:
         # Populate initial table (even before any days selected)
         self.calculate()
         self.apply_theme()  # apply saved dark/light mode
+
+    # -------------------------------
+    # Supplier filter functions
+    # -------------------------------
+    def on_filter_changed(self, event: tk.Event) -> None:
+        choice = self.filter_var.get()
+        if choice == "no-filter":
+            self.supplier_filter = None
+        else:
+            self.supplier_filter = choice
+        self.schedule_recalculate()
+
+    def clear_filter(self) -> None:
+        self.supplier_filter = None
+        self.filter_var.set("no-filter")
+        self.schedule_recalculate()
 
     # -------------------------------
     # Dark mode functions
@@ -345,10 +382,18 @@ class SupplyApp:
                 self.show_message("Override must be a number")
                 return
 
+        # Refresh filter combo values from current suppliers
+        suppliers = sorted({s for _, (_, _, _, s) in self.data.supply_items.items() if s})
+        self.filter_combo.configure(values=["no-filter"] + suppliers)
+
+        # Clear and re-populate tree
         for row in self.tree.get_children():
             self.tree.delete(row)
 
         for item, (coef, unit, inventory, supplier) in self.data.supply_items.items():
+            if self.supplier_filter and supplier != self.supplier_filter:
+                continue
+
             required: float = (total_sales/1000)*coef - inventory
             if required < 0:
                 required = 0.0
