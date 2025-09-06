@@ -24,7 +24,7 @@ class SupplyData:
     def __init__(self, path: str = SUPPLIES_FILE) -> None:
         self.path: str = path
         self.sales_estimates: Dict[str, float] = {}
-        self.supply_items: Dict[str, Tuple[float, str]] = {}
+        self.supply_items: Dict[str, Tuple[float, str, float, str]] = {}
         self.dark_mode: bool = True  # default dark
         self.dirty: bool = False
 
@@ -51,37 +51,18 @@ class SupplyData:
             self.sales_estimates = {
                 k: float(v) for k, v in data.get("sales_estimates", {}).items()
             }
-            # Expect supply_items entries as [coef, unit, inventory]
-            raw_items = data.get("supply_items", {})
-            self.supply_items = {}
-            for k, v in raw_items.items():
-                # support legacy formats of length 2 (coef, unit)
-                if isinstance(v, (list, tuple)) and len(v) == 3:
-                    coef = float(v[0])
-                    unit = str(v[1])
-                    inventory = float(v[2])
-                elif isinstance(v, (list, tuple)) and len(v) == 2:
-                    coef = float(v[0])
-                    unit = str(v[1])
-                    inventory = 0.0
-                else:
-                    # fallback: treat value as coef only
-                    coef = float(v)
-                    unit = ""
-                    inventory = 0.0
-                self.supply_items[k] = (coef, unit, inventory)
+            
+            self.supply_items = {
+                k: (float(v[0]), str(v[1]), float(v[2]), str(v[3]) if len(v) > 3 else "")
+                for k, v in data.get("supply_items", {}).items()
+            }
 
             self.dark_mode = bool(data.get("dark_mode", True))
 
     def save(self) -> None:
-        # Now save supply_items as lists [coef, unit, inventory]
-        serializable_items: Dict[str, Any] = {
-            name: [coef, unit, inventory]
-            for name, (coef, unit, inventory) in self.supply_items.items()
-        }
         data: Dict[str, Any] = {
             "sales_estimates": self.sales_estimates,
-            "supply_items": serializable_items,
+            "supply_items": self.supply_items,
             "dark_mode": self.dark_mode,
         }
         with open(self.path, "w", encoding="utf-8") as f:
@@ -89,8 +70,8 @@ class SupplyData:
         self.dirty = False
 
     def add_item(self, name: str, coef: float, unit: str) -> None:
-        # default inventory = 0.0 (do not prompt user)
-        self.supply_items[name] = (coef, unit, 0.0)
+        # coef, unit, inventory (default 0), supplier (default "")
+        self.supply_items[name] = (coef, unit, 0.0, "")
         self.dirty = True
 
 
@@ -149,19 +130,21 @@ class SupplyApp:
         # Treeview: include Inventory column (before Required)
         self.tree: ttk.Treeview = ttk.Treeview(
             root,
-            columns=("Item", "Unit", "UPT Coefficient", "Inventory", "Required"),
+            columns=("Item", "Unit", "UPT Coefficient", "Inventory", "Supplier", "Required"),
             show="headings",
         )
         self.tree.heading("Item", text="Item")
         self.tree.heading("Unit", text="Unit")
         self.tree.heading("UPT Coefficient", text="UPT Coefficient")
         self.tree.heading("Inventory", text="Inventory")
+        self.tree.heading("Supplier", text="Supplier")
         self.tree.heading("Required", text="Required")
 
         self.tree.column("Item", width=150, anchor="w")
         self.tree.column("Unit", width=100, anchor="center")
         self.tree.column("UPT Coefficient", width=100, anchor="center")
         self.tree.column("Inventory", width=100, anchor="center")
+        self.tree.column("Supplier", width=150, anchor="w")
         self.tree.column("Required", width=100, anchor="center")
 
         self.tree.pack(padx=10, pady=10, fill="both", expand=True)
@@ -298,33 +281,30 @@ class SupplyApp:
         def save_edit(event: tk.Event | None = None) -> None:
             new_value = entry.get().strip()
             entry.destroy()
-            if new_value == "":
+            if not new_value and col_index != 4:  # allow empty supplier
                 return
 
             item_values[col_index] = new_value
             self.tree.item(row_id, values=item_values)
 
             # Update back into supply_items
-            item_name = item_values[0]  # first column is Item name
-
-            # Determine values robustly from the row
-            # row layout: [Item, Unit, UPT Coefficient, Inventory, Required]
-            unit_val = str(item_values[1])
-            # coefficient is index 2
+            item_name = item_values[0]
             try:
-                coef_val = float(item_values[2])
-            except (ValueError, TypeError):
-                coef_val = 0.0
+                coef = float(item_values[2])
+            except ValueError:
+                coef = 0.0
                 self.show_message(f"Invalid coefficient for {item_name}, reset to 0")
-            # inventory is index 3
+
             try:
-                inventory_val = float(item_values[3])
-            except (ValueError, TypeError):
-                inventory_val = 0.0
+                inventory = float(item_values[3])
+            except ValueError:
+                inventory = 0.0
                 self.show_message(f"Invalid inventory for {item_name}, reset to 0")
 
-            # Save triple (coef, unit, inventory)
-            self.data.supply_items[item_name] = (coef_val, unit_val, inventory_val)
+            unit = item_values[1]
+            supplier = item_values[4]
+
+            self.data.supply_items[item_name] = (coef, unit, inventory, supplier)
             self.data.dirty = True
             self.show_message(f"Updated item: {item_name}")
 
@@ -365,17 +345,13 @@ class SupplyApp:
         for row in self.tree.get_children():
             self.tree.delete(row)
 
-        for item, (coef, unit, inventory) in self.data.supply_items.items():
-            # Note: your previous code used total_sales/1000 * coef — keep that logic if intended
-            computed: float = total_sales / 1000 * coef
-            required: float = computed - inventory
+        for item, (coef, unit, inventory, supplier) in self.data.supply_items.items():
+            required: float = (total_sales/1000)*coef - inventory
             if required < 0:
                 required = 0.0
-            # show inventory in the table as well
             self.tree.insert(
-                "",
-                "end",
-                values=(item, unit, coef, round(inventory, 3), round(required, 3)),
+                "", "end",
+                values=(item, unit, coef, inventory, supplier, round(required, 3))
             )
 
         self.root.title(f"Restaurant Supply Calculator (Total Sales = {total_sales})")
